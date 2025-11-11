@@ -9,20 +9,14 @@ class ContextMemory:
     
     def __init__(self, db_path: str = "db/context.db"):
         self.db_path = db_path
-        Path(db_path).parent.mkdir(exist_ok=True)
+        if db_path != ":memory:":
+            Path(db_path).parent.mkdir(exist_ok=True)
         self._init_db()
     
     def _init_db(self):
         """Initialize the database with required tables"""
         with sqlite3.connect(self.db_path) as conn:
-            # Check if module column exists
-            cursor = conn.execute("PRAGMA table_info(interactions)")
-            columns = [row[1] for row in cursor.fetchall()]
-            
-            if 'module' not in columns:
-                # Add module column to existing table
-                conn.execute("ALTER TABLE interactions ADD COLUMN module TEXT DEFAULT 'unknown'")
-            
+            # Create table with module column
             conn.execute("""
                 CREATE TABLE IF NOT EXISTS interactions (
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -33,6 +27,15 @@ class ContextMemory:
                     response_data TEXT NOT NULL
                 )
             """)
+            
+            # Check if module column exists (for existing databases)
+            cursor = conn.execute("PRAGMA table_info(interactions)")
+            columns = [row[1] for row in cursor.fetchall()]
+            
+            if 'module' not in columns:
+                # Add module column to existing table
+                conn.execute("ALTER TABLE interactions ADD COLUMN module TEXT DEFAULT 'unknown'")
+            
             conn.execute("""
                 CREATE INDEX IF NOT EXISTS idx_user_module_timestamp 
                 ON interactions(user_id, module, timestamp DESC)
