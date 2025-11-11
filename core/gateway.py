@@ -2,6 +2,7 @@ from typing import Dict, Any
 from agents.finance import FinanceAgent
 from agents.education import EducationAgent  
 from agents.creator import CreatorAgent
+from modules.sample_text.module import SampleTextModule
 from db.memory import ContextMemory
 from utils.logger import setup_logger
 
@@ -12,7 +13,8 @@ class Gateway:
         self.agents = {
             "finance": FinanceAgent(),
             "education": EducationAgent(),
-            "creator": CreatorAgent()
+            "creator": CreatorAgent(),
+            "sample_text": SampleTextModule()
         }
         self.memory = ContextMemory()
         self.logger = setup_logger(__name__)
@@ -39,7 +41,10 @@ class Gateway:
             }
         else:
             agent = self.agents[module]
-            response = agent.handle_request(intent, data, context)
+            if module == "sample_text":
+                response = agent.process(data)
+            else:
+                response = agent.handle_request(intent, data, context)
         
         # Store interaction
         if user_id:
