@@ -41,6 +41,23 @@ class ContextMemory:
                 ON interactions(user_id, module, timestamp DESC)
             """)
     
+    def _ensure_table_exists(self, conn):
+        """Ensure table exists in current connection (for in-memory databases)"""
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS interactions (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                user_id TEXT NOT NULL,
+                module TEXT NOT NULL,
+                timestamp TEXT NOT NULL,
+                request_data TEXT NOT NULL,
+                response_data TEXT NOT NULL
+            )
+        """)
+        conn.execute("""
+            CREATE INDEX IF NOT EXISTS idx_user_module_timestamp 
+            ON interactions(user_id, module, timestamp DESC)
+        """)
+    
     def store_interaction(self, user_id: str, request_data: Dict[Any, Any], 
                          response_data: Dict[Any, Any]):
         """Store a request-response interaction"""
@@ -48,6 +65,8 @@ class ContextMemory:
         module = request_data.get("module", "unknown")
         
         with sqlite3.connect(self.db_path) as conn:
+            # Ensure table exists (needed for in-memory databases)
+            self._ensure_table_exists(conn)
             conn.execute("""
                 INSERT INTO interactions (user_id, module, timestamp, request_data, response_data)
                 VALUES (?, ?, ?, ?, ?)
@@ -67,6 +86,7 @@ class ContextMemory:
     def get_user_history(self, user_id: str) -> List[Dict[str, Any]]:
         """Get full interaction history for a user"""
         with sqlite3.connect(self.db_path) as conn:
+            self._ensure_table_exists(conn)
             cursor = conn.execute("""
                 SELECT module, timestamp, request_data, response_data
                 FROM interactions
@@ -87,6 +107,7 @@ class ContextMemory:
     def get_context(self, user_id: str, limit: int = 3) -> List[Dict[str, Any]]:
         """Get recent context (last N interactions) for a user"""
         with sqlite3.connect(self.db_path) as conn:
+            self._ensure_table_exists(conn)
             cursor = conn.execute("""
                 SELECT module, timestamp, request_data, response_data
                 FROM interactions
