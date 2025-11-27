@@ -3,6 +3,7 @@ from typing import List, Dict, Any
 from core.models import CoreRequest, CoreResponse
 from core.gateway import Gateway
 from db.memory import ContextMemory
+from config import DB_PATH
 
 app = FastAPI(
     title="Unified Backend Bridge",
@@ -12,7 +13,7 @@ app = FastAPI(
 
 # Initialize gateway and memory
 gateway = Gateway()
-memory = ContextMemory()
+memory = ContextMemory(DB_PATH)
 
 @app.post("/core", response_model=CoreResponse)
 async def core_endpoint(request: CoreRequest) -> CoreResponse:
@@ -24,7 +25,17 @@ async def core_endpoint(request: CoreRequest) -> CoreResponse:
             user_id=request.user_id,
             data=request.data
         )
+        # Validate response structure before creating CoreResponse
+        if not isinstance(response, dict) or 'status' not in response:
+            raise HTTPException(status_code=500, detail="Invalid agent response format")
+        
+        # Ensure required fields exist
+        response.setdefault('message', 'No message provided')
+        response.setdefault('result', {})
+        
         return CoreResponse(**response)
+    except ValueError as e:
+        raise HTTPException(status_code=422, detail=f"Response validation error: {str(e)}")
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
@@ -57,4 +68,4 @@ async def root():
 
 if __name__ == "__main__":
     import uvicorn
-    uvicorn.run(app, host="0.0.0.0", port=8000)
+    uvicorn.run(app, host="0.0.0.0", port=8001)

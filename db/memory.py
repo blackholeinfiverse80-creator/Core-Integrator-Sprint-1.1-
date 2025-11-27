@@ -33,8 +33,12 @@ class ContextMemory:
             columns = [row[1] for row in cursor.fetchall()]
             
             if 'module' not in columns:
-                # Add module column to existing table
-                conn.execute("ALTER TABLE interactions ADD COLUMN module TEXT DEFAULT 'unknown'")
+                try:
+                    # Add module column to existing table
+                    conn.execute("ALTER TABLE interactions ADD COLUMN module TEXT DEFAULT 'unknown'")
+                except sqlite3.OperationalError:
+                    # Column already exists, ignore
+                    pass
             
             conn.execute("""
                 CREATE INDEX IF NOT EXISTS idx_user_module_timestamp 
@@ -58,30 +62,39 @@ class ContextMemory:
             ON interactions(user_id, module, timestamp DESC)
         """)
     
-    def store_interaction(self, user_id: str, request_data: Dict[Any, Any], 
-                         response_data: Dict[Any, Any]):
+    def store_interaction(self, user_id: str, request_data: Dict[str, Any], 
+                         response_data: Dict[str, Any]):
         """Store a request-response interaction"""
-        timestamp = datetime.utcnow().isoformat()
+        timestamp = datetime.now().isoformat()
         module = request_data.get("module", "unknown")
         
         with sqlite3.connect(self.db_path) as conn:
             # Ensure table exists (needed for in-memory databases)
             self._ensure_table_exists(conn)
-            conn.execute("""
-                INSERT INTO interactions (user_id, module, timestamp, request_data, response_data)
-                VALUES (?, ?, ?, ?, ?)
-            """, (user_id, module, timestamp, json.dumps(request_data), json.dumps(response_data)))
             
-            # Keep only last 5 entries per user per module
-            conn.execute("""
-                DELETE FROM interactions 
-                WHERE user_id = ? AND module = ? AND id NOT IN (
-                    SELECT id FROM interactions 
-                    WHERE user_id = ? AND module = ? 
-                    ORDER BY timestamp DESC 
-                    LIMIT 5
-                )
-            """, (user_id, module, user_id, module))
+            # Use transaction for atomic operations
+            conn.execute("BEGIN TRANSACTION")
+            try:
+                conn.execute("""
+                    INSERT INTO interactions (user_id, module, timestamp, request_data, response_data)
+                    VALUES (?, ?, ?, ?, ?)
+                """, (user_id, module, timestamp, json.dumps(request_data), json.dumps(response_data)))
+                
+                # Keep only last 5 entries per user per module
+                conn.execute("""
+                    DELETE FROM interactions 
+                    WHERE user_id = ? AND module = ? AND id NOT IN (
+                        SELECT id FROM interactions 
+                        WHERE user_id = ? AND module = ? 
+                        ORDER BY timestamp DESC 
+                        LIMIT 5
+                    )
+                """, (user_id, module, user_id, module))
+                
+                conn.execute("COMMIT")
+            except Exception:
+                conn.execute("ROLLBACK")
+                raise
     
     def get_user_history(self, user_id: str) -> List[Dict[str, Any]]:
         """Get full interaction history for a user"""

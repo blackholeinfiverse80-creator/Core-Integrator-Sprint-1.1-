@@ -5,6 +5,7 @@ from agents.creator import CreatorAgent
 from modules.sample_text.module import SampleTextModule
 from db.memory import ContextMemory
 from utils.logger import setup_logger
+from config import DB_PATH
 
 class Gateway:
     """Central gateway for routing requests to appropriate agents"""
@@ -16,7 +17,7 @@ class Gateway:
             "creator": CreatorAgent(),
             "sample_text": SampleTextModule()
         }
-        self.memory = ContextMemory()
+        self.memory = ContextMemory(DB_PATH)
         self.logger = setup_logger(__name__)
     
     def process_request(self, module: str, intent: str, user_id: str, 
@@ -41,14 +42,21 @@ class Gateway:
             }
         else:
             agent = self.agents[module]
-            if module == "sample_text":
-                response = agent.process(data)
-            else:
-                response = agent.handle_request(intent, data, context)
+            try:
+                if module == "sample_text":
+                    response = agent.process(data, context)
+                else:
+                    response = agent.handle_request(intent, data, context)
+            except Exception as e:
+                response = {
+                    "status": "error",
+                    "message": f"Agent processing failed: {str(e)}",
+                    "result": {}
+                }
         
         # Store interaction
         if user_id:
-            request_data = {"module": module, "intent": intent, "data": data}
+            request_data = {"module": module, "intent": intent, "user_id": user_id, "data": data}
             self.memory.store_interaction(user_id, request_data, response)
         
         # Log response

@@ -8,6 +8,7 @@ def test_memory_chain_limit():
     with tempfile.NamedTemporaryFile(suffix='.db', delete=False) as tmp:
         db_path = tmp.name
     
+    memory = None
     try:
         memory = ContextMemory(db_path)
         user_id = "test_user_123"
@@ -41,7 +42,14 @@ def test_memory_chain_limit():
         assert "request_2" in str(history[4]["request"])
     
     finally:
-        os.unlink(db_path)
+        # Close database connection before deleting file
+        if memory:
+            del memory
+        try:
+            os.unlink(db_path)
+        except (OSError, PermissionError):
+            # File might be locked on Windows, ignore
+            pass
 
 def test_cross_module_isolation():
     """Test that different modules maintain separate 5-entry limits"""
@@ -49,6 +57,7 @@ def test_cross_module_isolation():
     with tempfile.NamedTemporaryFile(suffix='.db', delete=False) as tmp:
         db_path = tmp.name
     
+    memory = None
     try:
         memory = ContextMemory(db_path)
         user_id = "isolation_test"
@@ -77,4 +86,11 @@ def test_cross_module_isolation():
         assert education_count == 3
     
     finally:
-        os.unlink(db_path)
+        # Close database connection before deleting file
+        if memory:
+            del memory
+        try:
+            os.unlink(db_path)
+        except (OSError, PermissionError):
+            # File might be locked on Windows, ignore
+            pass
